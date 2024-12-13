@@ -1,6 +1,8 @@
 - name: Initial Setup
   hosts: localhost
   gather_facts: false
+  vars_files:
+    - "../group_vars/all.yml"
   tasks:
     - name: Import ssh setup role
       import_role:
