@@ -1,0 +1,30 @@
+# SSH Keys
+files/*_key
+files/*.pem
+files/*.key
+files/*.secret
+
+# Ansible
+*.retry
+*.vault
+vault_password.txt
+.vault_pass
+
+# Environment
+.env
+.env.*
+
+# Group vars
+group_vars/vault.yml
+group_vars/all.yml
+
+# System files
+.DS_Store
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Runtime data
+/var/run/*

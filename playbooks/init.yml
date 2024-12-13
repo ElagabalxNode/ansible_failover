@@ -1,0 +1,7 @@
+- name: Initial Setup
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Import ssh setup role
+      import_role:
+        name: ssh_setup

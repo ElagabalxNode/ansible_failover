@@ -1,0 +1,52 @@
+- name: Get full validator info
+  shell: >
+    solana validators --output json
+  register: validators_json
+  delegate_to: localhost
+
+- name: Parse validator status
+  set_fact:
+    validator_found: >-
+      {{ (validators_json.stdout | from_json).validators |
+         default([]) |
+         selectattr('identityPubkey', 'equalto', main_validator_identity_key) |
+         list |
+         length > 0 }}
+    validator_check: >-
+      {{ (validators_json.stdout | from_json).validators |
+         default([]) |
+         selectattr('identityPubkey', 'equalto', main_validator_identity_key) |
+         map(attribute='delinquent') |
+         first |
+         default(true) }}
+
+- name: Set monitoring status facts
+  set_fact:
+    monitoring_status:
+      timestamp: "{{ ansible_date_time.iso8601 }}"
+      active_validator: "{{ active_validator }}"
+      main_validator_ssh: "{{ 'OK' if not ssh_check_main.failed else 'FAIL' }}"
+      backup_validator_ssh: "{{ 'OK' if not ssh_check_backup.failed else 'FAIL' }}"
+      validator_found: "{{ validator_found }}"
+      delinquent: "{{ validator_check if validator_found else true }}"
+
+- name: Log monitoring status
+  copy:
+    content: |
+      Timestamp: {{ monitoring_status.timestamp }}
+      Active Validator: {{ monitoring_status.active_validator }}
+      Main Validator SSH: {{ monitoring_status.main_validator_ssh }}
+      Backup Validator SSH: {{ monitoring_status.backup_validator_ssh }}
+      Validator Found in Network: {{ monitoring_status.validator_found }}
+      Delinquent Status: {{ monitoring_status.delinquent }}
+      Identity Key: {{ main_validator_identity_key }}
+    dest: "{{ system_state_path }}/last_check.log"
+    mode: '0644'
+
+- name: Debug validator info
+  debug:
+    msg: |
+      Full JSON parsed successfully: {{ (validators_json.stdout | from_json).validators is defined }}
+      Number of validators: {{ (validators_json.stdout | from_json).validators | length }}
+      Searching for key: {{ main_validator_identity_key }}
+  when: not validator_found

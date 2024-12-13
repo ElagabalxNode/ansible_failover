@@ -1,0 +1,77 @@
+- name: Monitor and Handle Validator States
+  hosts: localhost
+  gather_facts: false
+  
+  pre_tasks:
+    - name: Ensure system state directory exists
+      file:
+        path: "{{ system_state_path }}"
+        state: directory
+        mode: '0755'
+      
+    - name: Get current active validator
+      slurp:
+        src: "{{ active_validator_file }}"
+      register: active_validator_content
+      ignore_errors: yes
+
+    - name: Set active validator fact
+      set_fact:
+        active_validator: "{{ (active_validator_content.content | b64decode | trim) if not active_validator_content.failed else 'main' }}"
+
+    - name: Verify SSH setup
+      import_role:
+        name: ssh_setup
+      tags: ["ssh_check"]
+
+    - name: Check SSH connection to Main Validator
+      wait_for:
+        host: "{{ main_validator_ip }}"
+        port: "{{ main_validator_ssh_port }}"
+        timeout: 10
+      register: ssh_check_main
+      ignore_errors: yes
+
+    - name: Check SSH connection to Backup Validator
+      wait_for:
+        host: "{{ backup_validator_ip }}"
+        port: "{{ backup_validator_ssh_port }}"
+        timeout: 10
+      register: ssh_check_backup
+      ignore_errors: yes
+
+    - name: Fail if both validators are unreachable
+      fail:
+        msg: "Both validators are unreachable!"
+      when: 
+        - ssh_check_main.failed
+        - ssh_check_backup.failed
+
+    - name: Fail if active validator is unreachable
+      fail:
+        msg: "Current active validator ({{ active_validator }}) is unreachable!"
+      when: 
+        - (active_validator == 'main' and ssh_check_main.failed) or
+          (active_validator == 'backup' and ssh_check_backup.failed)
+
+  tasks:
+    - name: Import monitoring role
+      import_role:
+        name: monitoring
+      when: active_validator == 'main' or active_validator == 'backup'
+      
+    - name: Trigger failover if needed
+      import_role:
+        name: failover
+      when: 
+        - monitoring_status.delinquent|bool|default(false)
+        - not ssh_check_backup.failed
+        - active_validator == 'main'
+
+    - name: Regular tower backup
+      import_role:
+        name: backup
+      when: 
+        - not monitoring_status.delinquent|bool|default(false)
+        - (active_validator == 'main' and not ssh_check_main.failed) or
+          (active_validator == 'backup' and not ssh_check_backup.failed)

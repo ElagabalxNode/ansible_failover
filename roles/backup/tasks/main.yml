@@ -1,0 +1,7 @@
+- name: Backup Tower Files
+  ansible.posix.synchronize:
+    src: "{{ main_validator_ledger_path }}/tower-1_9-*.bin"
+    dest: "{{ backup_validator_tower_path }}"
+    mode: push
+  delegate_to: "{{ main_validator_ip }}"
+  when: not validator_status.stdout|bool

@@ -1,0 +1,51 @@
+- name: Record failover state
+  copy:
+    content: "Failover initiated at {{ ansible_date_time.iso8601 }}"
+    dest: "{{ failover_status_file }}"
+    mode: '0644'
+
+- name: Update active validator record
+  copy:
+    content: "backup"
+    dest: "{{ active_validator_file }}"
+    mode: '0644'
+
+- name: Check Main Validator Accessibility
+  wait_for:
+    host: "{{ main_validator_ip }}"
+    port: 22
+    timeout: 10
+  register: main_validator_accessible
+  ignore_errors: yes
+  delegate_to: localhost
+
+- name: Handle Delinquent State - Main Validator Available
+  block:
+    - name: Update Main Validator Identity
+      shell: |
+        agave-validator -l {{ main_validator_ledger_path }} set-identity {{ main_validator_keys_path }}/unstaked-identity.json
+        ln -sf {{ main_validator_keys_path }}/unstaked-identity.json {{ main_validator_keys_path }}/identity.json
+      when: main_validator_accessible.failed == false
+      delegate_to: "{{ main_validator_ip }}"
+
+    - name: Sync Tower to Backup
+      ansible.posix.synchronize:
+        src: "{{ main_validator_tower_path }}"
+        dest: "{{ backup_validator_ledger_path }}"
+      delegate_to: "{{ main_validator_ip }}"
+
+    - name: Activate Backup Validator
+      shell: |
+        agave-validator -l {{ backup_validator_ledger_path }} set-identity --require-tower {{ backup_validator_keys_path }}/staked-identity.json
+        ln -sf {{ backup_validator_keys_path }}/staked-identity.json {{ backup_validator_keys_path }}/identity.json
+      delegate_to: "{{ backup_validator_ip }}"
+
+- name: Handle Delinquent State - Main Validator Unavailable
+  block:
+    - name: Copy Backup Tower and Activate
+      shell: |
+        cp {{ backup_validator_tower_path }}/tower-1_9-*.bin {{ backup_validator_ledger_path }}
+        agave-validator -l {{ backup_validator_ledger_path }} set-identity --require-tower {{ backup_validator_keys_path }}/staked-identity.json
+        ln -sf {{ backup_validator_keys_path }}/staked-identity.json {{ backup_validator_keys_path }}/identity.json
+      when: main_validator_accessible.failed == true
+      delegate_to: "{{ backup_validator_ip }}"

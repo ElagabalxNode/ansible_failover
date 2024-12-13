@@ -1,0 +1,27 @@
+- name: Check if SSH keys exist
+  stat:
+    path: "{{ item }}"
+  register: ssh_keys
+  with_items:
+    - "{{ main_validator_ssh_key }}"
+    - "{{ backup_validator_ssh_key }}"
+  delegate_to: localhost
+
+- name: Ensure SSH directory exists
+  file:
+    path: ~/.ssh
+    state: directory
+    mode: '0700'
+  delegate_to: localhost
+  when: ssh_keys.results | map(attribute='stat.exists') | select('false') | list | length > 0
+
+- name: Copy missing SSH keys
+  copy:
+    src: "files/{{ item.key_name }}"
+    dest: "{{ item.path }}"
+    mode: '0600'
+  with_items:
+    - { key_name: 'main_validator_key', path: '{{ main_validator_ssh_key }}' }
+    - { key_name: 'backup_validator_key', path: '{{ backup_validator_ssh_key }}' }
+  when: not ssh_keys.results[ansible_loop_var | int].stat.exists
+  delegate_to: localhost

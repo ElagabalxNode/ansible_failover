@@ -1,0 +1,33 @@
+# Main Validator
+main_validator_ip: "YOUR_MAIN_IP"
+main_validator_user: "root"
+main_validator_ssh_key: "/root/.ssh/main_validator_key"  # Path to key on Sentry
+main_validator_ssh_port: 22
+main_validator_ledger_path: "/mnt/ledger"
+main_validator_tower_path: "/mnt/ledger/tower-1_9-*.bin"
+main_validator_keys_path: "/mnt/system/.secrets"
+main_validator_identity_key: "YOUR_VALIDATOR_PUBKEY"
+
+# Backup Validator
+backup_validator_ip: "YOUR_BACKUP_IP"
+backup_validator_user: "root"
+backup_validator_ssh_key: "/root/.ssh/backup_validator_key"  # Path to key on Sentry
+backup_validator_ssh_port: 22
+backup_validator_ledger_path: "/mnt/ledger"
+backup_validator_tower_path: "/mnt/backup_tower"
+backup_validator_keys_path: "/mnt/.secrets"
+
+# System State
+system_state_path: "/var/run/solana_validator"
+active_validator_file: "{{ system_state_path }}/active_validator"
+failover_status_file: "{{ system_state_path }}/failover.status"
+
+# SSH Config
+ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+
+# Monitoring
+check_interval: 300  # 5 minutes in seconds
+backup_interval: 60  # 1 minute in seconds
+
+# Optional Features
+force_failover: false  # Can be enabled via --extra-vars
