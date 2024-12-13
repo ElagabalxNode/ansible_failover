@@ -28,11 +28,37 @@
       when: main_validator_accessible.failed == false
       delegate_to: "{{ main_validator_ip }}"
 
-    - name: Sync Tower to Backup
-      ansible.posix.synchronize:
-        src: "{{ main_validator_tower_path }}"
-        dest: "{{ backup_validator_ledger_path }}"
+    - name: Get tower filename
+      shell: "basename $(ls {{ main_validator_tower_path }})"
+      register: tower_filename
       delegate_to: "{{ main_validator_ip }}"
+
+    - name: Create temp directory
+      file:
+        path: "/tmp/tower-backup"
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+
+    - name: Sync Tower to Sentry first
+      ansible.posix.synchronize:
+        src: "{{ main_validator_ledger_path }}/{{ tower_filename.stdout }}"
+        dest: "/tmp/tower-backup/"
+        mode: pull
+      delegate_to: localhost
+
+    - name: Sync Tower from Sentry to Backup
+      ansible.posix.synchronize:
+        src: "/tmp/tower-backup/{{ tower_filename.stdout }}"
+        dest: "{{ backup_validator_ledger_path }}/"
+        mode: push
+      delegate_to: localhost
+
+    - name: Cleanup temp directory
+      file:
+        path: "/tmp/tower-backup"
+        state: absent
+      delegate_to: localhost
 
     - name: Activate Backup Validator
       shell: |
