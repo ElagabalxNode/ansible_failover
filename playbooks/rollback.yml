@@ -1,0 +1,8 @@
+# playbooks/rollback.yml
+- name: Rollback to Main Validator
+  hosts: localhost
+  gather_facts: true
+  tasks:
+    - name: Import rollback role
+      import_role:
+        name: rollback

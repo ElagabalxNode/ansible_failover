@@ -1,0 +1,90 @@
+- name: Check active validator
+  slurp:
+    src: "{{ active_validator_file }}"
+  register: active_validator_content
+  delegate_to: localhost
+
+- name: Verify backup is active
+  fail:
+    msg: "Cannot rollback: current active validator is not backup"
+  when: (active_validator_content.content | b64decode | trim) != 'backup'
+
+- name: Check Main Validator Accessibility
+  wait_for:
+    host: "{{ main_validator_ip }}"
+    port: "{{ main_validator_ssh_port }}"
+    timeout: 10
+  register: main_validator_accessible
+  delegate_to: localhost
+
+- name: Fail if main validator is not accessible
+  fail:
+    msg: "Main validator is not accessible"
+  when: main_validator_accessible.failed
+
+- name: Update Backup Validator Identity
+  shell: "bash -c 'source ~/.profile && agave-validator -l {{ backup_validator_ledger_path }} set-identity {{ backup_validator_keys_path }}/unstaked-identity.json && ln -sf {{ backup_validator_keys_path }}/unstaked-identity.json {{ backup_validator_keys_path }}/identity.json'"
+  delegate_to: "{{ backup_validator_ip }}"
+  ignore_errors: yes
+  vars:
+    ansible_port: "{{ backup_validator_ssh_port }}"
+    ansible_ssh_private_key_file: "{{ backup_validator_ssh_key }}"
+    ansible_user: "{{ backup_validator_user }}"
+
+- name: Get tower filename
+  shell: "basename $(ls {{ backup_validator_ledger_path }}/tower-1_9-*.bin)"
+  register: tower_filename
+  delegate_to: "{{ backup_validator_ip }}"
+  vars:
+    ansible_port: "{{ backup_validator_ssh_port }}"
+    ansible_ssh_private_key_file: "{{ backup_validator_ssh_key }}"
+    ansible_user: "{{ backup_validator_user }}"
+
+- name: Create temp directory
+  file:
+    path: "/tmp/tower-backup"
+    state: directory
+    mode: '0755'
+  delegate_to: localhost
+
+- name: Sync Tower to Sentry first
+  shell: >
+    rsync -avz -e "ssh -p {{ backup_validator_ssh_port }} -i {{ backup_validator_ssh_key }}"
+    root@{{ backup_validator_ip }}:{{ backup_validator_ledger_path }}/{{ tower_filename.stdout }}
+    /tmp/tower-backup/
+  delegate_to: localhost
+
+- name: Sync Tower from Sentry to Main
+  shell: >
+    rsync -avz -e "ssh -p {{ main_validator_ssh_port }} -i {{ main_validator_ssh_key }} -o StrictHostKeyChecking=no"
+    /tmp/tower-backup/{{ tower_filename.stdout }}
+    root@{{ main_validator_ip }}:{{ main_validator_ledger_path }}/
+  delegate_to: localhost
+
+- name: Cleanup temp directory
+  file:
+    path: "/tmp/tower-backup"
+    state: absent
+  delegate_to: localhost
+
+- name: Activate Main Validator
+  shell: "bash -c 'source ~/.profile && agave-validator -l {{ main_validator_ledger_path }} set-identity --require-tower {{ main_validator_keys_path }}/staked-identity.json && ln -sf {{ main_validator_keys_path }}/staked-identity.json {{ main_validator_keys_path }}/identity.json'"
+  delegate_to: "{{ main_validator_ip }}"
+  vars:
+    ansible_port: "{{ main_validator_ssh_port }}"
+    ansible_ssh_private_key_file: "{{ main_validator_ssh_key }}"
+    ansible_user: "{{ main_validator_user }}"
+
+- name: Update active validator record
+  copy:
+    content: "main"
+    dest: "{{ active_validator_file }}"
+    mode: '0644'
+  delegate_to: localhost
+
+- name: Record rollback state
+  copy:
+    content: "Rollback completed at {{ ansible_date_time.iso8601 }}"
+    dest: "{{ failover_status_file }}"
+    mode: '0644'
+  delegate_to: localhost
