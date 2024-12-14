@@ -13,7 +13,7 @@
 - name: Check Main Validator Accessibility
   wait_for:
     host: "{{ main_validator_ip }}"
-    port: 22
+    port: "{{ main_validator_ssh_port }}"
     timeout: 10
   register: main_validator_accessible
   ignore_errors: yes
@@ -22,16 +22,22 @@
 - name: Handle Delinquent State - Main Validator Available
   block:
     - name: Update Main Validator Identity
-      shell: |
-        agave-validator -l {{ main_validator_ledger_path }} set-identity {{ main_validator_keys_path }}/unstaked-identity.json
-        ln -sf {{ main_validator_keys_path }}/unstaked-identity.json {{ main_validator_keys_path }}/identity.json
-      when: main_validator_accessible.failed == false
+      shell: "bash -c 'source ~/.profile && agave-validator -l {{ main_validator_ledger_path }} set-identity {{ main_validator_keys_path }}/unstaked-identity.json && ln -sf {{ main_validator_keys_path }}/unstaked-identity.json {{ main_validator_keys_path }}/identity.json'"
       delegate_to: "{{ main_validator_ip }}"
+      ignore_errors: yes
+      vars:
+        ansible_port: "{{ main_validator_ssh_port }}"
+        ansible_ssh_private_key_file: "{{ main_validator_ssh_key }}"
+        ansible_user: "{{ main_validator_user }}"
 
     - name: Get tower filename
-      shell: "basename $(ls {{ main_validator_tower_path }})"
+      shell: "basename $(ls {{ main_validator_ledger_path }}/tower-1_9-*.bin)"
       register: tower_filename
       delegate_to: "{{ main_validator_ip }}"
+      vars:
+        ansible_port: "{{ main_validator_ssh_port }}"
+        ansible_ssh_private_key_file: "{{ main_validator_ssh_key }}"
+        ansible_user: "{{ main_validator_user }}"
 
     - name: Create temp directory
       file:
@@ -41,17 +47,17 @@
       delegate_to: localhost
 
     - name: Sync Tower to Sentry first
-      ansible.posix.synchronize:
-        src: "{{ main_validator_ledger_path }}/{{ tower_filename.stdout }}"
-        dest: "/tmp/tower-backup/"
-        mode: pull
+      shell: >
+        rsync -avz -e "ssh -p {{ main_validator_ssh_port }} -i {{ main_validator_ssh_key }}"
+        root@{{ main_validator_ip }}:{{ main_validator_ledger_path }}/{{ tower_filename.stdout }}
+        /tmp/tower-backup/
       delegate_to: localhost
 
     - name: Sync Tower from Sentry to Backup
-      ansible.posix.synchronize:
-        src: "/tmp/tower-backup/{{ tower_filename.stdout }}"
-        dest: "{{ backup_validator_ledger_path }}/"
-        mode: push
+      shell: >
+        rsync -avz -e "ssh -p {{ backup_validator_ssh_port }} -i {{ backup_validator_ssh_key }} -o StrictHostKeyChecking=no"
+        /tmp/tower-backup/{{ tower_filename.stdout }}
+        root@{{ backup_validator_ip }}:{{ backup_validator_ledger_path }}/
       delegate_to: localhost
 
     - name: Cleanup temp directory
@@ -61,10 +67,12 @@
       delegate_to: localhost
 
     - name: Activate Backup Validator
-      shell: |
-        agave-validator -l {{ backup_validator_ledger_path }} set-identity --require-tower {{ backup_validator_keys_path }}/staked-identity.json
-        ln -sf {{ backup_validator_keys_path }}/staked-identity.json {{ backup_validator_keys_path }}/identity.json
+      shell: "bash -c 'source ~/.profile && agave-validator -l {{ backup_validator_ledger_path }} set-identity --require-tower {{ backup_validator_keys_path }}/staked-identity.json && ln -sf {{ backup_validator_keys_path }}/staked-identity.json {{ backup_validator_keys_path }}/identity.json'"
       delegate_to: "{{ backup_validator_ip }}"
+      vars:
+        ansible_port: "{{ backup_validator_ssh_port }}"
+        ansible_ssh_private_key_file: "{{ backup_validator_ssh_key }}"
+        ansible_user: "{{ backup_validator_user }}"
 
 - name: Handle Delinquent State - Main Validator Unavailable
   block:
@@ -75,3 +83,7 @@
         ln -sf {{ backup_validator_keys_path }}/staked-identity.json {{ backup_validator_keys_path }}/identity.json
       when: main_validator_accessible.failed == true
       delegate_to: "{{ backup_validator_ip }}"
+      vars:
+        ansible_port: "{{ backup_validator_ssh_port }}"
+        ansible_ssh_private_key_file: "{{ backup_validator_ssh_key }}"
+        ansible_user: "{{ backup_validator_user }}"

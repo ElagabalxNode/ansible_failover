@@ -31,3 +31,5 @@ backup_interval: 60  # 1 minute in seconds
 
 # Optional Features
 force_failover: false  # Can be enabled via --extra-vars
+
+solana_rpc_url: "http://localhost:8899"

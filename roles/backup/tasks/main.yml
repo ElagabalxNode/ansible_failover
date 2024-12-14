@@ -1,7 +1,35 @@
-- name: Backup Tower Files
-  ansible.posix.synchronize:
-    src: "{{ main_validator_ledger_path }}/tower-1_9-*.bin"
-    dest: "{{ backup_validator_tower_path }}"
-    mode: push
+- name: Get tower filename
+  shell: "basename $(ls {{ main_validator_ledger_path }}/tower-1_9-*.bin)"
+  register: tower_filename
   delegate_to: "{{ main_validator_ip }}"
-  when: not validator_status.stdout|bool
+  vars:
+    ansible_port: "{{ main_validator_ssh_port }}"
+    ansible_ssh_private_key_file: "{{ main_validator_ssh_key }}"
+    ansible_user: "{{ main_validator_user }}"
+
+- name: Create temp directory
+  file:
+    path: "/tmp/tower-backup"
+    state: directory
+    mode: '0755'
+  delegate_to: localhost
+
+- name: Sync Tower to Sentry first
+  shell: >
+    rsync -avz -e "ssh -p {{ main_validator_ssh_port }} -i {{ main_validator_ssh_key }}"
+    root@{{ main_validator_ip }}:{{ main_validator_ledger_path }}/{{ tower_filename.stdout }}
+    /tmp/tower-backup/
+  delegate_to: localhost
+
+- name: Sync Tower from Sentry to Backup
+  shell: >
+    rsync -avz -e "ssh -p {{ backup_validator_ssh_port }} -i {{ backup_validator_ssh_key }} -o StrictHostKeyChecking=no"
+    /tmp/tower-backup/{{ tower_filename.stdout }}
+    root@{{ backup_validator_ip }}:{{ backup_validator_tower_path }}/
+  delegate_to: localhost
+
+- name: Cleanup temp directory
+  file:
+    path: "/tmp/tower-backup"
+    state: absent
+  delegate_to: localhost

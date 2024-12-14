@@ -1,24 +1,14 @@
-- name: Get full validator info
+- name: Get validator delinquent status
   shell: >
-    solana validators --output json
-  register: validators_json
+    solana validators --output json |
+    jq -r '.validators[] | select(.identityPubkey == "{{ main_validator_identity_key }}") | .delinquent'
+  register: validator_delinquent_status
   delegate_to: localhost
 
 - name: Parse validator status
   set_fact:
-    validator_found: >-
-      {{ (validators_json.stdout | from_json).validators |
-         default([]) |
-         selectattr('identityPubkey', 'equalto', main_validator_identity_key) |
-         list |
-         length > 0 }}
-    validator_check: >-
-      {{ (validators_json.stdout | from_json).validators |
-         default([]) |
-         selectattr('identityPubkey', 'equalto', main_validator_identity_key) |
-         map(attribute='delinquent') |
-         first |
-         default(true) }}
+    validator_found: "{{ validator_delinquent_status.stdout | length > 0 }}"
+    validator_check: "{{ validator_delinquent_status.stdout == 'true' }}"
 
 - name: Set monitoring status facts
   set_fact:
@@ -46,7 +36,6 @@
 - name: Debug validator info
   debug:
     msg: |
-      Full JSON parsed successfully: {{ (validators_json.stdout | from_json).validators is defined }}
-      Number of validators: {{ (validators_json.stdout | from_json).validators | length }}
-      Searching for key: {{ main_validator_identity_key }}
+      Validator Found: {{ validator_found }}
+      Delinquent Status: {{ validator_check }}
   when: not validator_found

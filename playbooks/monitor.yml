@@ -1,6 +1,8 @@
 - name: Monitor and Handle Validator States
   hosts: localhost
-  gather_facts: false
+  gather_facts: true
+  vars_files:
+    - "../group_vars/all.yml"
   
   pre_tasks:
     - name: Ensure system state directory exists
