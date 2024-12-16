@@ -1,62 +1,58 @@
-# Solana Validator Monitor
+Да, давайте обновим README.md, чтобы отразить все функциональные возможности и сценарии использования:
 
-Ansible-based monitoring and failover system for Solana validators. This system provides automated monitoring of validator status and handles failover between main and backup validators.
+```markdown
+# Solana Validator Monitoring and Failover System
+
+Ansible-based system for monitoring Solana validators and managing automatic failover between main and backup validators.
 
 ## Features
 
-- Real-time monitoring of validator status
-- Automated failover on delinquency detection
-- Secure tower file synchronization
-- SSH-based secure communications
-- Detailed logging and status tracking
-- Automated identity management for validators
+### Monitoring
+- Real-time monitoring of validator delinquent status
+- SSH connectivity checks for both validators
+- Automatic tower file backups
+- Detailed logging of system state
 
-## Prerequisites
+### Automatic Failover
+Handles different scenarios of validator failures:
+- Service failure (validator process not running)
+- Server unavailability (server down/unreachable)
+- Node lag (validator fell behind and marked delinquent)
 
-- Ansible 2.9+
-- Solana CLI tools installed on the Sentry server
+### Manual Rollback
+Provides safe manual rollback functionality when returning to main validator.
+
+## Requirements
+
+- Ansible 2.10+
+- Solana CLI tools installed on Sentry server
 - SSH access to both validators
 - Proper validator setup with identity keys
 
-## Project Structure
-
-```
-.
-├── inventory/
-│   └── hosts.yml
-├── group_vars/
-│   ├── all.yml
-│   └── all.yml.example
-├── roles/
-│   ├── monitoring/
-│   ├── backup/
-│   ├── failover/
-│   └── ssh_setup/
-├── playbooks/
-│   ├── init.yml
-│   └── monitor.yml
-└── files/
-    └── .gitkeep
-```
-
-## Quick Start
+## Installation
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/solana-validator-monitor.git
+git clone https://github.com/your-repo/solana-validator-monitor.git
 cd solana-validator-monitor
 ```
 
-2. Copy and configure variables:
-```bash
-cp group_vars/all.yml.example group_vars/all.yml
-# Edit group_vars/all.yml with your configuration
+2. Configure variables in `group_vars/all.yml`:
+```yaml
+# Main Validator
+main_validator_ip: "YOUR_MAIN_IP"
+main_validator_ssh_port: YOUR_SSH_PORT
+main_validator_identity_key: "YOUR_VALIDATOR_PUBKEY"
+
+# Backup Validator
+backup_validator_ip: "YOUR_BACKUP_IP"
+backup_validator_ssh_port: YOUR_SSH_PORT
 ```
 
-3. Set up SSH keys:
+3. Place SSH keys in `files/` directory:
 ```bash
-# Copy your SSH keys to the files directory
-cp /path/to/your/ssh/keys files/
+cp /path/to/your/ssh/key files/validator_key
+chmod 600 files/validator_key
 ```
 
 4. Initialize the system:
@@ -64,115 +60,78 @@ cp /path/to/your/ssh/keys files/
 ansible-playbook playbooks/init.yml
 ```
 
-5. Start monitoring:
+## Usage
+
+### Regular Monitoring
 ```bash
 ansible-playbook playbooks/monitor.yml
 ```
-
-## Security Considerations
-
-### Managing Secrets
-
-1. Use Ansible Vault for sensitive data:
-```bash
-# Create encrypted variables file
-ansible-vault create group_vars/vault.yml
-
-# Edit encrypted file
-ansible-vault edit group_vars/vault.yml
-
-# Run playbook with vault password
-ansible-playbook playbooks/monitor.yml --ask-vault-pass
-```
-
-2. Configure these sensitive values in vault.yml:
-```yaml
-vault_main_validator_ssh_key: |
-  -----BEGIN OPENSSH PRIVATE KEY-----
-  your_key_here
-  -----END OPENSSH PRIVATE KEY-----
-vault_backup_validator_ssh_key: |
-  -----BEGIN OPENSSH PRIVATE KEY-----
-  your_key_here
-  -----END OPENSSH PRIVATE KEY-----
-vault_main_validator_identity_key: "your-validator-pubkey"
-```
-
-3. Reference vault variables in all.yml:
-```yaml
-main_validator_ssh_key: "{{ vault_main_validator_ssh_key }}"
-backup_validator_ssh_key: "{{ vault_backup_validator_ssh_key }}"
-main_validator_identity_key: "{{ vault_main_validator_identity_key }}"
-```
-
-### Best Practices
-
-1. Never commit unencrypted secrets to git
-2. Use separate SSH keys for each validator
-3. Restrict SSH key permissions:
-```bash
-chmod 600 files/*_key
-```
-4. Use dedicated user accounts on each server
-5. Implement proper firewall rules between servers
-
-### Automated Deployment
-
-For automated deployment, create a vault password file:
-```bash
-echo "your-vault-password" > ~/.vault_pass
-chmod 600 ~/.vault_pass
-```
-
-Add to ansible.cfg:
-```ini
-[defaults]
-vault_password_file = ~/.vault_pass
-```
-
-## Monitoring Setup
-
 Add to crontab for continuous monitoring:
 ```bash
 */5 * * * * cd /path/to/project && ansible-playbook playbooks/monitor.yml
 ```
 
-## Logs and Status
-
-Monitoring logs are stored in:
-```
-/var/run/solana_validator/last_check.log
-```
-
-System status is maintained in:
-```
-/var/run/solana_validator/active_validator
-/var/run/solana_validator/failover.status
-```
-
-## Manual Failover
-
-To manually trigger failover:
+### Manual Rollback
+When you want to return to main validator:
 ```bash
-ansible-playbook playbooks/monitor.yml --extra-vars "force_failover=true"
+ansible-playbook playbooks/rollback.yml
 ```
 
-## Troubleshooting
+## System States
 
-1. Check SSH connectivity:
-```bash
-ansible-playbook playbooks/monitor.yml --tags ssh_check
+### Active States
+System tracks active validator in `/var/run/solana_validator/active_validator`:
+- "main" - Main validator is active
+- "backup" - Backup validator is active
+
+### Failover Process
+1. Detects main validator delinquency
+2. Changes main validator's identity to unstaked
+3. Transfers tower file to backup validator
+4. Activates backup validator with staked identity
+
+### Rollback Process (Manual)
+1. Verifies backup validator is currently active
+2. Checks main validator accessibility
+3. Transfers tower file back to main validator
+4. Restores proper identity keys
+5. Updates system state
+
+## File Structure
+```
+.
+├── inventory/
+│   └── hosts.yml
+├── group_vars/
+│   └── all.yml
+├── roles/
+│   ├── monitoring/
+│   ├── backup/
+│   ├── failover/
+│   ├── rollback/
+│   └── ssh_setup/
+├── playbooks/
+│   ├── init.yml
+│   ├── monitor.yml
+│   └── rollback.yml
+└── files/
+    └── validator_key
 ```
 
-2. Verify validator status:
-```bash
-solana validators --output json | jq '.validators[] | select(.identityPubkey=="YOUR_KEY")'
-```
+## Logging
 
-3. Check logs:
-```bash
-tail -f /var/run/solana_validator/last_check.log
-```
+System maintains logs in `/var/run/solana_validator/`:
+- `last_check.log` - Latest monitoring status
+- `failover.status` - Failover event records
+- `active_validator` - Current active validator
+
+## Safety Features
+
+- SSH connectivity verification
+- Proper identity key management
+- Prevents duplicate active validators
+- Safe tower file transfers
+- Multiple failure scenario handling
 
 ## Contributing
 
@@ -180,8 +139,4 @@ tail -f /var/run/solana_validator/last_check.log
 2. Create your feature branch
 3. Commit your changes
 4. Push to the branch
-5. Create a new Pull Request
-
-## License
-
-MIT
+5. Create a Pull Request
