@@ -1,5 +1,3 @@
-Да, давайте обновим README.md, чтобы отразить все функциональные возможности и сценарии использования:
-
 ```markdown
 # Solana Validator Monitoring and Failover System
 
